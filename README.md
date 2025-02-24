@@ -38,14 +38,19 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Configuration
 public class WebClientConfig {
 
-    @Bean
-    public WebClient webClient(WebClient.Builder webClientBuilder, SslBundles sslBundles) {
-        SslBundle sslBundle = sslBundles.getBundle("mybundle");
-        return webClientBuilder
-                .baseUrl("https://your-secure-api.com")
-                .apply(sslBundle.sslContext())
-                .build();
+    @@Service
+public class MyService {
+
+    private final RestTemplate restTemplate;
+
+    public MyService(RestTemplateBuilder restTemplateBuilder, SslBundles sslBundles) {
+        this.restTemplate = restTemplateBuilder
+            .setSslBundle(sslBundles.getBundle("truststore-bundle"))
+            .build();
     }
+
+    // Méthodes de service utilisant restTemplate
+}
 }
     // Méthodes de service utilisant restTemplate
 }
