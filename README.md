@@ -29,12 +29,24 @@ public class MyService {
 
     private final RestTemplate restTemplate;
 
-    public MyService(RestTemplateBuilder restTemplateBuilder, SslBundles sslBundles) {
-        this.restTemplate = restTemplateBuilder
-            .setSslBundle(sslBundles.getBundle("truststore-bundle"))
-            .build();
-    }
+    import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundles;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.reactive.function.client.WebClient;
 
+@Configuration
+public class WebClientConfig {
+
+    @Bean
+    public WebClient webClient(WebClient.Builder webClientBuilder, SslBundles sslBundles) {
+        SslBundle sslBundle = sslBundles.getBundle("mybundle");
+        return webClientBuilder
+                .baseUrl("https://your-secure-api.com")
+                .apply(sslBundle.sslContext())
+                .build();
+    }
+}
     // Méthodes de service utilisant restTemplate
 }
 
