@@ -1,76 +1,48 @@
-Pour configurer votre application Spring Boot afin d’utiliser un certificat au format PEM sans clé privée, vous pouvez suivre les étapes suivantes :
+Pour configurer votre application Spring Boot afin d’utiliser un truststore au format PEM, vous pouvez exploiter la fonctionnalité des SSL Bundles introduite dans Spring Boot 3.1. Cette approche simplifie la gestion des certificats et des clés en permettant de les regrouper sous forme de bundles réutilisables.
 
-1. Importer le certificat dans le Truststore Java
+Étapes de Configuration
+	1.	Préparer le certificat PEM
+Assurez-vous de disposer du certificat PEM du serveur auquel votre application doit faire confiance, par exemple server-cert.pem.
+	2.	Configurer le SSL Bundle dans application.yml ou application.properties
+Dans votre fichier de configuration Spring Boot, définissez un bundle SSL en spécifiant le certificat PEM :
+Exemple avec application.yml :
 
-Si votre objectif est de faire confiance à un serveur LDAP sécurisé, vous devez ajouter le certificat public de ce serveur dans le Truststore de Java (cacerts). Cela permettra à votre application de reconnaître et de faire confiance au certificat du serveur lors de l’établissement de connexions sécurisées.
-
-Étapes :
-	•	Obtenir le certificat du serveur LDAP : Assurez-vous d’avoir le fichier PEM du certificat public du serveur LDAP (par exemple, ldap_cert.pem).
-	•	Importer le certificat dans le Truststore Java :
-
-keytool -import -alias ldapCert -keystore "$JAVA_HOME/lib/security/cacerts" -file /chemin/vers/ldap_cert.pem
-
-Le mot de passe par défaut du Truststore est changeit.
-
-2. Configurer Spring Boot pour utiliser le Truststore
-
-Après avoir importé le certificat, configurez votre application Spring Boot pour utiliser le Truststore lors des connexions SSL/TLS.
-
-Ajouter les propriétés suivantes dans application.properties ou application.yml :
-
-# application.properties
-spring.ldap.urls=ldaps://ldap.example.com:636
-spring.ldap.base=dc=example,dc=com
-spring.ldap.username=cn=admin,dc=example,dc=com
-spring.ldap.password=yourpassword
-
-# application.yml
 spring:
-  ldap:
-    urls: ldaps://ldap.example.com:636
-    base: dc=example,dc=com
-    username: cn=admin,dc=example,dc=com
-    password: yourpassword
+  ssl:
+    bundle:
+      pem:
+        truststore-bundle:
+          truststore:
+            certificate: "classpath:server-cert.pem"
 
-Assurez-vous que l’URL utilise ldaps:// pour indiquer une connexion sécurisée.
+Exemple avec application.properties :
 
-3. Configurer le LdapContextSource pour utiliser SSL
+spring.ssl.bundle.pem.truststore-bundle.truststore.certificate=classpath:server-cert.pem
 
-Dans votre configuration Spring, assurez-vous que le LdapContextSource est correctement configuré pour utiliser SSL :
+Dans ces exemples, truststore-bundle est le nom que vous attribuez au bundle SSL. Le chemin classpath:server-cert.pem indique que le certificat est situé dans le classpath de votre application.
 
-@Configuration
-public class LdapConfig {
+	3.	Appliquer le SSL Bundle à votre application
+Pour utiliser ce bundle SSL dans votre application, vous pouvez le référencer dans les configurations appropriées. Par exemple, pour sécuriser un client REST :
 
-    @Value("${spring.ldap.urls}")
-    private String ldapUrl;
+@Service
+public class MyService {
 
-    @Value("${spring.ldap.base}")
-    private String ldapBase;
+    private final RestTemplate restTemplate;
 
-    @Value("${spring.ldap.username}")
-    private String ldapUser;
-
-    @Value("${spring.ldap.password}")
-    private String ldapPassword;
-
-    @Bean
-    public LdapContextSource contextSource() {
-        LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl(ldapUrl); // Assurez-vous que l'URL commence par ldaps://
-        contextSource.setBase(ldapBase);
-        contextSource.setUserDn(ldapUser);
-        contextSource.setPassword(ldapPassword);
-        return contextSource;
+    public MyService(RestTemplateBuilder restTemplateBuilder, SslBundles sslBundles) {
+        this.restTemplate = restTemplateBuilder
+            .setSslBundle(sslBundles.getBundle("truststore-bundle"))
+            .build();
     }
 
-    @Bean
-    public LdapTemplate ldapTemplate() {
-        return new LdapTemplate(contextSource());
-    }
+    // Méthodes de service utilisant restTemplate
 }
 
-Remarques importantes :
-	•	Pas de clé privée nécessaire : Si vous ne faites que faire confiance à un serveur LDAP (c’est-à-dire que votre application agit en tant que client), vous n’avez pas besoin d’une clé privée. Seul le certificat public du serveur est requis.
-	•	Authentification mutuelle (mTLS) : Si le serveur LDAP exige une authentification mutuelle, votre application devra fournir son propre certificat et sa clé privée. Dans ce cas, vous devrez configurer un keystore contenant votre certificat et votre clé privée.
+Dans cet exemple, le RestTemplate est configuré pour utiliser le bundle SSL nommé truststore-bundle, assurant ainsi que les communications HTTP utilisent le certificat spécifié.
 
-En suivant ces étapes, votre application Spring Boot sera configurée pour établir des connexions sécurisées avec un serveur LDAP en utilisant un certificat PEM sans clé privée.
+Remarques Importantes
+	•	Version de Spring Boot : Assurez-vous d’utiliser Spring Boot 3.1 ou une version ultérieure pour bénéficier de la fonctionnalité des SSL Bundles.
+	•	Chemin du certificat : Le préfixe classpath: indique que le fichier server-cert.pem doit être placé dans le classpath de votre application, généralement dans le répertoire src/main/resources.
+	•	Authentification Mutuelle (mTLS) : Si votre application nécessite une authentification mutuelle, vous devrez également configurer un keystore contenant votre certificat client et sa clé privée. Cela peut être fait en ajoutant une section keystore dans la configuration du bundle SSL.
+
+En suivant ces étapes, vous pourrez configurer votre application Spring Boot pour utiliser un truststore au format PEM, facilitant ainsi la gestion des certificats et améliorant la sécurité de vos communications.
