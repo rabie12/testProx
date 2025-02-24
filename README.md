@@ -1,137 +1,76 @@
+Pour configurer votre application Spring Boot afin d’utiliser un certificat au format PEM sans clé privée, vous pouvez suivre les étapes suivantes :
 
-package eu.olky.wallet.trading.config.security;
+1. Importer le certificat dans le Truststore Java
 
+Si votre objectif est de faire confiance à un serveur LDAP sécurisé, vous devez ajouter le certificat public de ce serveur dans le Truststore de Java (cacerts). Cela permettra à votre application de reconnaître et de faire confiance au certificat du serveur lors de l’établissement de connexions sécurisées.
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.ldap.core.support.LdapContextSource;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
-import org.springframework.security.ldap.authentication.PasswordComparisonAuthenticator;
-import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
-import org.springframework.security.ldap.userdetails.LdapAuthoritiesPopulator;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
-import org.springframework.security.web.SecurityFilterChain;
+Étapes :
+	•	Obtenir le certificat du serveur LDAP : Assurez-vous d’avoir le fichier PEM du certificat public du serveur LDAP (par exemple, ldap_cert.pem).
+	•	Importer le certificat dans le Truststore Java :
 
+keytool -import -alias ldapCert -keystore "$JAVA_HOME/lib/security/cacerts" -file /chemin/vers/ldap_cert.pem
+
+Le mot de passe par défaut du Truststore est changeit.
+
+2. Configurer Spring Boot pour utiliser le Truststore
+
+Après avoir importé le certificat, configurez votre application Spring Boot pour utiliser le Truststore lors des connexions SSL/TLS.
+
+Ajouter les propriétés suivantes dans application.properties ou application.yml :
+
+# application.properties
+spring.ldap.urls=ldaps://ldap.example.com:636
+spring.ldap.base=dc=example,dc=com
+spring.ldap.username=cn=admin,dc=example,dc=com
+spring.ldap.password=yourpassword
+
+# application.yml
+spring:
+  ldap:
+    urls: ldaps://ldap.example.com:636
+    base: dc=example,dc=com
+    username: cn=admin,dc=example,dc=com
+    password: yourpassword
+
+Assurez-vous que l’URL utilise ldaps:// pour indiquer une connexion sécurisée.
+
+3. Configurer le LdapContextSource pour utiliser SSL
+
+Dans votre configuration Spring, assurez-vous que le LdapContextSource est correctement configuré pour utiliser SSL :
 
 @Configuration
-public class LdapSecurityConfig {
+public class LdapConfig {
 
-    private static final String[] AUTH_WHITELIST = {
-            // -- Swagger UI v2
-            "/v2/api-docs",
-            "/swagger-resources",
-            "/swagger-resources/**",
-            "/configuration/ui",
-            "/configuration/security",
-            "/swagger-ui.html",
-            "/webjars/**",
-            // -- Swagger UI v3 (OpenAPI)
-            "/v3/api-docs/**",
-            "/swagger-ui/**"
-    };
-
-    @Value("${spring.security.ldap.urls}")
+    @Value("${spring.ldap.urls}")
     private String ldapUrl;
 
-    @Value("${spring.security.ldap.base}")
+    @Value("${spring.ldap.base}")
     private String ldapBase;
 
-    @Value("${spring.security.ldap.userDnPatterns}")
-    private String userDnPattern;
+    @Value("${spring.ldap.username}")
+    private String ldapUser;
 
-    @Value("${spring.security.ldap.group-search-base}")
-    private String groupSearchBase;
-
-    @Value("${spring.security.ldap.user}")
-    private String adminUser;
-
-    @Value("${spring.security.ldap.secret}")
-    private String adminSecret;
-
+    @Value("${spring.ldap.password}")
+    private String ldapPassword;
 
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
-        return authConfig.getAuthenticationManager();
-    }
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(AUTH_WHITELIST).permitAll()
-                                .anyRequest().permitAll()
-//                      .requestMatchers("/auth/**").permitAll()
-//                      .requestMatchers("/admin/**").hasRole("ADMIN")
-//                        .anyRequest().authenticated()
-                );
- /*               .oauth2ResourceServer((oauth2) -> oauth2
-                        .jwt(Customizer.withDefaults())
-                )
-                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS));*/
-        return http.build();
-    }
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withJwkSetUri("http://localhost:8080/oauth2/jwks").build();
-    }
-
-
-    @Bean
-    public LdapAuthoritiesPopulator ldapAuthoritiesPopulator() {
-        DefaultLdapAuthoritiesPopulator populator = new DefaultLdapAuthoritiesPopulator(ldapContextSource(), "ou=groups");
-        populator.setGroupSearchFilter("(uniqueMember={0})");
-        populator.setRolePrefix("ROLE_");
-        return populator;
-    }
-    @Bean
-    public LdapAuthenticationProvider ldapAuthenticationProvider() {
-        PasswordComparisonAuthenticator authenticator =
-                new PasswordComparisonAuthenticator(ldapContextSource());
-        authenticator.setUserDnPatterns(new String[]{userDnPattern});
-        authenticator.setPasswordAttributeName("password");
-
-        LdapAuthoritiesPopulator authoritiesPopulator =
-                new DefaultLdapAuthoritiesPopulator(ldapContextSource(), groupSearchBase);
-
-        return new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
-    }
-
-    @Bean
-    public LdapContextSource ldapContextSource() {
+    public LdapContextSource contextSource() {
         LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl(ldapUrl);
+        contextSource.setUrl(ldapUrl); // Assurez-vous que l'URL commence par ldaps://
         contextSource.setBase(ldapBase);
-        contextSource.setUserDn(adminUser);
-        contextSource.setPassword(adminSecret);
-        contextSource.afterPropertiesSet();
+        contextSource.setUserDn(ldapUser);
+        contextSource.setPassword(ldapPassword);
         return contextSource;
+    }
+
+    @Bean
+    public LdapTemplate ldapTemplate() {
+        return new LdapTemplate(contextSource());
     }
 }
 
+Remarques importantes :
+	•	Pas de clé privée nécessaire : Si vous ne faites que faire confiance à un serveur LDAP (c’est-à-dire que votre application agit en tant que client), vous n’avez pas besoin d’une clé privée. Seul le certificat public du serveur est requis.
+	•	Authentification mutuelle (mTLS) : Si le serveur LDAP exige une authentification mutuelle, votre application devra fournir son propre certificat et sa clé privée. Dans ce cas, vous devrez configurer un keystore contenant votre certificat et votre clé privée.
 
-
-
-    public boolean isUserInGroup(String username, String groupName) {
-        LdapQuery query = LdapQueryBuilder.query()
-                .base(base)
-                .where("cn").is("OlkyWallet_UAT_AppBO")
-                .and("member").is("cn=" + username + ",OU=Groupe_Olky,DC=OLKYPAY,DC=LOCAL");
-
-        List<String> result = ldapTemplate.search(query, new AttributesMapper<String>() {
-            @Override
-            public String mapFromAttributes(Attributes attributes) throws NamingException {
-                return attributes.get("cn") != null ? attributes.get("cn").get().toString() : null;
-            }
-        });
+En suivant ces étapes, votre application Spring Boot sera configurée pour établir des connexions sécurisées avec un serveur LDAP en utilisant un certificat PEM sans clé privée.
