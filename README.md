@@ -1,35 +1,32 @@
-Pour configurer votre application Spring Boot afin d’utiliser un truststore au format PEM, vous pouvez exploiter la fonctionnalité des SSL Bundles introduite dans Spring Boot 3.1. Cette approche simplifie la gestion des certificats et des clés en permettant de les regrouper sous forme de bundles réutilisables.
+I understand that you’re configuring a WebClient in your Spring Boot application to use a PEM-encoded truststore for SSL/TLS communication, and you don’t have a specific base URL to set during its initialization. Here’s how you can achieve this:
 
-Étapes de Configuration
-	1.	Préparer le certificat PEM
-Assurez-vous de disposer du certificat PEM du serveur auquel votre application doit faire confiance, par exemple server-cert.pem.
-	2.	Configurer le SSL Bundle dans application.yml ou application.properties
-Dans votre fichier de configuration Spring Boot, définissez un bundle SSL en spécifiant le certificat PEM :
-Exemple avec application.yml :
+1. Ensure You’re Using Spring Boot 3.1 or Later
+
+The SSL bundle feature, which simplifies SSL/TLS configurations using PEM files, was introduced in Spring Boot 3.1. Verify your project’s build.gradle or pom.xml to ensure you’re using the correct version.
+
+2. Place Your PEM Certificate in the Classpath
+
+Save your PEM-encoded certificate (e.g., server-cert.pem) in the src/main/resources directory of your project. This ensures it’s accessible on the classpath.
+
+3. Configure the SSL Bundle in application.yml or application.properties
+
+Define an SSL bundle that references your PEM certificate. In application.yml:
 
 spring:
   ssl:
     bundle:
       pem:
-        truststore-bundle:
+        mybundle:
           truststore:
             certificate: "classpath:server-cert.pem"
 
-Exemple avec application.properties :
+This configuration creates an SSL bundle named mybundle that uses your PEM certificate as the truststore.
 
-spring.ssl.bundle.pem.truststore-bundle.truststore.certificate=classpath:server-cert.pem
+4. Configure the WebClient Without a Base URL
 
-Dans ces exemples, truststore-bundle est le nom que vous attribuez au bundle SSL. Le chemin classpath:server-cert.pem indique que le certificat est situé dans le classpath de votre application.
+If you don’t have a specific base URL, you can configure the WebClient without setting one. Here’s how you can set up a WebClient bean that utilizes the defined SSL bundle:
 
-	3.	Appliquer le SSL Bundle à votre application
-Pour utiliser ce bundle SSL dans votre application, vous pouvez le référencer dans les configurations appropriées. Par exemple, pour sécuriser un client REST :
-
-@Service
-public class MyService {
-
-    private final RestTemplate restTemplate;
-
-    import org.springframework.boot.ssl.SslBundle;
+import org.springframework.boot.ssl.SslBundle;
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,28 +35,54 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Configuration
 public class WebClientConfig {
 
-    @@Service
-public class MyService {
+    @Bean
+    public WebClient webClient(WebClient.Builder webClientBuilder, SslBundles sslBundles) {
+        SslBundle sslBundle = sslBundles.getBundle("mybundle");
+        return webClientBuilder
+                .apply(sslBundle.sslContext())
+                .build();
+    }
+}
 
-    private final RestTemplate restTemplate;
+In this setup:
+	•	sslBundles.getBundle("mybundle"): Retrieves the SSL bundle configured earlier.
+	•	apply(sslBundle.sslContext()): Applies the SSL context from the bundle to the WebClient.
 
-    public MyService(RestTemplateBuilder restTemplateBuilder, SslBundles sslBundles) {
-        this.restTemplate = restTemplateBuilder
-            .setSslBundle(sslBundles.getBundle("truststore-bundle"))
-            .build();
+By not calling .baseUrl(), the WebClient is created without a predefined base URL, allowing you to specify the full URL for each request dynamically.
+
+5. Using the Configured WebClient
+
+With the WebClient bean configured, you can inject it into your services and use it to make requests:
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+@Service
+public class ApiService {
+
+    private final WebClient webClient;
+
+    public ApiService(WebClient webClient) {
+        this.webClient = webClient;
     }
 
-    // Méthodes de service utilisant restTemplate
-}
-}
-    // Méthodes de service utilisant restTemplate
+    public Mono<String> fetchData(String url) {
+        return webClient.get()
+                .uri(url)
+                .retrieve()
+                .bodyToMono(String.class);
+    }
 }
 
-Dans cet exemple, le RestTemplate est configuré pour utiliser le bundle SSL nommé truststore-bundle, assurant ainsi que les communications HTTP utilisent le certificat spécifié.
+In this example, the fetchData method accepts a url parameter, allowing you to specify the target URL for each request.
 
-Remarques Importantes
-	•	Version de Spring Boot : Assurez-vous d’utiliser Spring Boot 3.1 ou une version ultérieure pour bénéficier de la fonctionnalité des SSL Bundles.
-	•	Chemin du certificat : Le préfixe classpath: indique que le fichier server-cert.pem doit être placé dans le classpath de votre application, généralement dans le répertoire src/main/resources.
-	•	Authentification Mutuelle (mTLS) : Si votre application nécessite une authentification mutuelle, vous devrez également configurer un keystore contenant votre certificat client et sa clé privée. Cela peut être fait en ajoutant une section keystore dans la configuration du bundle SSL.
+6. Additional Considerations
+	•	Multiple Certificates: If you need to trust multiple certificates, you can concatenate them into a single PEM file or specify multiple certificates in your configuration.
+	•	Reloading Certificates: If your certificates change and you need the application to recognize updates without restarting, consider enabling the reload-on-update property.
 
-En suivant ces étapes, vous pourrez configurer votre application Spring Boot pour utiliser un truststore au format PEM, facilitant ainsi la gestion des certificats et améliorant la sécurité de vos communications.
+By following these steps, you can configure your WebClient to use a PEM-encoded truststore without specifying a base URL, allowing for dynamic URL handling in your application.
+
+References:
+	•	Securing Spring Boot Applications With SSL
+	•	Spring Boot SSL Documentation
