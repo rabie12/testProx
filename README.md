@@ -1,64 +1,137 @@
-# If your LDAP certificate is in DER format, you’ll need to convert it before importing it into a keystore or truststore. Here’s what to do:
 
-1. Check if the Certificate is in DER Format
-
-Run this command:
-
-openssl x509 -inform DER -in ldap_cert.der -text -noout
-
-	•	If it shows readable details, it’s a valid DER certificate.
-	•	If you see an error, the file might be invalid or in another format.
-
-2. Convert DER to PEM
-
-Tomcat and keytool typically require PEM format. Convert your .der file to .pem:
-
-openssl x509 -inform DER -in ldap_cert.der -out ldap_cert.pem
-
-3. Import the Certificate into the Java Truststore (If Needed)
-
-If the certificate is for trusting the LDAP server, add it to Java’s cacerts truststore:
-
-keytool -import -trustcacerts -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -noprompt -alias ldap_cert -file ldap_cert.pem
-
-On Windows:
-
-"C:\Program Files\Java\jdk-21\bin\keytool" -import -trustcacerts -keystore "C:\Program Files\Java\jdk-21\lib\security\cacerts" -storepass changeit -noprompt -alias ldap_cert -file C:\path\to\ldap_cert.pem
-
-Then, verify:
-
-keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit | grep ldap_cert
-
-4. Convert DER to PKCS12 Keystore (If You Need a Keystore)
-
-If you need a keystore with both a certificate and private key, but your .der file is just a certificate (no key), you must obtain the private key first.
-
-If you do have the private key (ldap_key.der), convert both to PKCS12:
-
-openssl pkcs12 -export -in ldap_cert.pem -inkey ldap_key.pem -out keystore.p12 -name tomcat -password pass:yourpassword
-
-Then update application.properties:
-
-server.ssl.key-store=classpath:keystore.p12
-server.ssl.key-store-type=PKCS12
-server.ssl.key-store-password=yourpassword
-server.ssl.key-alias=tomcat
-
-5. Restart and Test
-
-After making these changes:
-	•	Restart your Spring Boot application.
-	•	If you see SSL handshake errors, enable debug logging:
-
--Djavax.net.debug=ssl
+package eu.olky.wallet.trading.config.security;
 
 
-	•	Check for certificate issues in logs.
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.ldap.core.support.LdapContextSource;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
+import org.springframework.security.ldap.authentication.PasswordComparisonAuthenticator;
+import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
+import org.springframework.security.ldap.userdetails.LdapAuthoritiesPopulator;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.web.SecurityFilterChain;
 
-Summary
 
-Scenario	Steps
-LDAP Server Requires Trust Only	Convert .der to .pem, import into cacerts
-LDAP Server Requires Client Authentication	Convert .der to .pem, ensure you have the private key, create a .p12 keystore, update Spring Boot configs
+@Configuration
+public class LdapSecurityConfig {
 
-Let me know if you need further clarification!
+    private static final String[] AUTH_WHITELIST = {
+            // -- Swagger UI v2
+            "/v2/api-docs",
+            "/swagger-resources",
+            "/swagger-resources/**",
+            "/configuration/ui",
+            "/configuration/security",
+            "/swagger-ui.html",
+            "/webjars/**",
+            // -- Swagger UI v3 (OpenAPI)
+            "/v3/api-docs/**",
+            "/swagger-ui/**"
+    };
+
+    @Value("${spring.security.ldap.urls}")
+    private String ldapUrl;
+
+    @Value("${spring.security.ldap.base}")
+    private String ldapBase;
+
+    @Value("${spring.security.ldap.userDnPatterns}")
+    private String userDnPattern;
+
+    @Value("${spring.security.ldap.group-search-base}")
+    private String groupSearchBase;
+
+    @Value("${spring.security.ldap.user}")
+    private String adminUser;
+
+    @Value("${spring.security.ldap.secret}")
+    private String adminSecret;
+
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
+        return authConfig.getAuthenticationManager();
+    }
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http.csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(AUTH_WHITELIST).permitAll()
+                                .anyRequest().permitAll()
+//                      .requestMatchers("/auth/**").permitAll()
+//                      .requestMatchers("/admin/**").hasRole("ADMIN")
+//                        .anyRequest().authenticated()
+                );
+ /*               .oauth2ResourceServer((oauth2) -> oauth2
+                        .jwt(Customizer.withDefaults())
+                )
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS));*/
+        return http.build();
+    }
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        return NimbusJwtDecoder.withJwkSetUri("http://localhost:8080/oauth2/jwks").build();
+    }
+
+
+    @Bean
+    public LdapAuthoritiesPopulator ldapAuthoritiesPopulator() {
+        DefaultLdapAuthoritiesPopulator populator = new DefaultLdapAuthoritiesPopulator(ldapContextSource(), "ou=groups");
+        populator.setGroupSearchFilter("(uniqueMember={0})");
+        populator.setRolePrefix("ROLE_");
+        return populator;
+    }
+    @Bean
+    public LdapAuthenticationProvider ldapAuthenticationProvider() {
+        PasswordComparisonAuthenticator authenticator =
+                new PasswordComparisonAuthenticator(ldapContextSource());
+        authenticator.setUserDnPatterns(new String[]{userDnPattern});
+        authenticator.setPasswordAttributeName("password");
+
+        LdapAuthoritiesPopulator authoritiesPopulator =
+                new DefaultLdapAuthoritiesPopulator(ldapContextSource(), groupSearchBase);
+
+        return new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
+    }
+
+    @Bean
+    public LdapContextSource ldapContextSource() {
+        LdapContextSource contextSource = new LdapContextSource();
+        contextSource.setUrl(ldapUrl);
+        contextSource.setBase(ldapBase);
+        contextSource.setUserDn(adminUser);
+        contextSource.setPassword(adminSecret);
+        contextSource.afterPropertiesSet();
+        return contextSource;
+    }
+}
+
+
+
+
+    public boolean isUserInGroup(String username, String groupName) {
+        LdapQuery query = LdapQueryBuilder.query()
+                .base(base)
+                .where("cn").is("OlkyWallet_UAT_AppBO")
+                .and("member").is("cn=" + username + ",OU=Groupe_Olky,DC=OLKYPAY,DC=LOCAL");
+
+        List<String> result = ldapTemplate.search(query, new AttributesMapper<String>() {
+            @Override
+            public String mapFromAttributes(Attributes attributes) throws NamingException {
+                return attributes.get("cn") != null ? attributes.get("cn").get().toString() : null;
+            }
+        });
