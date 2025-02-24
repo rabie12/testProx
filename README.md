@@ -1,33 +1,35 @@
-I understand that you’re configuring a WebClient in your Spring Boot application to use a PEM-encoded truststore for SSL/TLS communication, and you don’t have a specific base URL to set during its initialization. Here’s how you can achieve this:
+I understand you’re encountering issues with the fromBundle method not being recognized in your Spring Boot application. Let’s address this step by step to identify and resolve the problem.
 
-1. Ensure You’re Using Spring Boot 3.1 or Later
+1. Verify Spring Boot Version
 
-The SSL bundle feature, which simplifies SSL/TLS configurations using PEM files, was introduced in Spring Boot 3.1. Verify your project’s build.gradle or pom.xml to ensure you’re using the correct version.
+The fromBundle method is part of the WebClientSsl interface, introduced in Spring Boot 3.1. To ensure compatibility:
+	•	Check Your Project’s Dependencies:
+	•	Maven: Inspect your pom.xml to confirm the Spring Boot version:
 
-2. Place Your PEM Certificate in the Classpath
+<parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.1.0</version> <!-- Ensure this is 3.1.0 or later -->
+</parent>
 
-Save your PEM-encoded certificate (e.g., server-cert.pem) in the src/main/resources directory of your project. This ensures it’s accessible on the classpath.
 
-3. Configure the SSL Bundle in application.yml or application.properties
+	•	Gradle: Inspect your build.gradle for the Spring Boot version:
 
-Define an SSL bundle that references your PEM certificate. In application.yml:
+implementation 'org.springframework.boot:spring-boot-starter:3.1.0' // Ensure this is 3.1.0 or later
 
-spring:
-  ssl:
-    bundle:
-      pem:
-        mybundle:
-          truststore:
-            certificate: "classpath:server-cert.pem"
 
-This configuration creates an SSL bundle named mybundle that uses your PEM certificate as the truststore.
 
-4. Configure the WebClient Without a Base URL
+2. Ensure Correct Imports
 
-If you don’t have a specific base URL, you can configure the WebClient without setting one. Here’s how you can set up a WebClient bean that utilizes the defined SSL bundle:
+The fromBundle method is available in the WebClientSsl interface located in the org.springframework.boot.autoconfigure.web.reactive.function.client package. Ensure you have the correct import:
 
-import org.springframework.boot.ssl.SslBundle;
-import org.springframework.boot.ssl.SslBundles;
+import org.springframework.boot.autoconfigure.web.reactive.function.client.WebClientSsl;
+
+3. Configure the WebClient Bean
+
+When configuring the WebClient with an SSL Bundle, your setup should look like this:
+
+import org.springframework.boot.autoconfigure.web.reactive.function.client.WebClientSsl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -36,53 +38,35 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class WebClientConfig {
 
     @Bean
-    public WebClient webClient(WebClient.Builder webClientBuilder, SslBundles sslBundles) {
-        SslBundle sslBundle = sslBundles.getBundle("mybundle");
+    public WebClient webClient(WebClient.Builder webClientBuilder, WebClientSsl webClientSsl) {
         return webClientBuilder
-                .apply(sslBundle.sslContext())
+                .apply(webClientSsl.fromBundle("mybundle"))
                 .build();
     }
 }
 
 In this setup:
-	•	sslBundles.getBundle("mybundle"): Retrieves the SSL bundle configured earlier.
-	•	apply(sslBundle.sslContext()): Applies the SSL context from the bundle to the WebClient.
+	•	webClientSsl.fromBundle("mybundle"): Applies the SSL configuration from the SSL bundle named “mybundle” to the WebClient builder.
 
-By not calling .baseUrl(), the WebClient is created without a predefined base URL, allowing you to specify the full URL for each request dynamically.
+4. Common Issues and Resolutions
+	•	Method Not Recognized:
+	•	Spring Boot Version: Confirm you’re using Spring Boot 3.1.0 or later, as earlier versions do not include the WebClientSsl interface.
+	•	Dependencies: Ensure you have the spring-boot-starter-webflux dependency, as WebClient is part of this module.
 
-5. Using the Configured WebClient
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webflux</artifactId>
+</dependency>
 
-With the WebClient bean configured, you can inject it into your services and use it to make requests:
 
-import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
+	•	Correct Imports: Ensure you’re importing WebClientSsl from the correct package:
 
-@Service
-public class ApiService {
+import org.springframework.boot.autoconfigure.web.reactive.function.client.WebClientSsl;
 
-    private final WebClient webClient;
 
-    public ApiService(WebClient webClient) {
-        this.webClient = webClient;
-    }
 
-    public Mono<String> fetchData(String url) {
-        return webClient.get()
-                .uri(url)
-                .retrieve()
-                .bodyToMono(String.class);
-    }
-}
-
-In this example, the fetchData method accepts a url parameter, allowing you to specify the target URL for each request.
-
-6. Additional Considerations
-	•	Multiple Certificates: If you need to trust multiple certificates, you can concatenate them into a single PEM file or specify multiple certificates in your configuration.
-	•	Reloading Certificates: If your certificates change and you need the application to recognize updates without restarting, consider enabling the reload-on-update property.
-
-By following these steps, you can configure your WebClient to use a PEM-encoded truststore without specifying a base URL, allowing for dynamic URL handling in your application.
-
-References:
+5. Additional Resources
 	•	Securing Spring Boot Applications With SSL
 	•	Spring Boot SSL Documentation
+
+By verifying your Spring Boot version, ensuring the correct dependencies and imports, and configuring your WebClient appropriately, the fromBundle method should be recognized and function as expected. If you continue to experience issues, please provide more details, and I’ll be happy to assist further.
