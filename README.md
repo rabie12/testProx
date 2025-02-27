@@ -1,64 +1,53 @@
-@ExtendWith(MockitoExtension.class)
-class IbanValidationControllerTest {
+package eu.olky.bankInfo.web;
 
-    @Mock
-    private IbanValidationService ibanValidationService;
+import eu.olky.bankInfo.dto.FindBankResponse;
+import eu.olky.bankInfo.dto.IbanValidationResponse;
+import eu.olky.bankInfo.service.BankInfoValidationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
 
-    private IbanValidationController ibanValidationController;
 
-    @BeforeEach
-    void setUp() {
-        ibanValidationController = new IbanValidationController(ibanValidationService);
+@RestController
+@RequestMapping("/api/")
+@Tag(name = "Bank Info", description = "Bank Info Validation")
+public class BankInfoValidationController {
+
+    private final BankInfoValidationService bankInfoValidationService;
+
+    public BankInfoValidationController(BankInfoValidationService bankInfoValidationService) {
+        this.bankInfoValidationService = bankInfoValidationService;
     }
 
-    @Test
-    void validateIban_ShouldReturnValidResponse() {
-        // Given
-        String iban = "DE89370400440532013000";
-        IbanValidationResponse ibanResponse = new IbanValidationResponse(iban, true);
-        ApiResponse<IbanValidationResponse> expectedResponse = new ApiResponse<>(ibanResponse, "Valid IBAN");
-
-        Mockito.when(ibanValidationService.validateIban(iban)).thenReturn(Mono.just(expectedResponse));
-
-        // When
-        StepVerifier.create(ibanValidationController.validateIban(iban))
-                .expectNext(expectedResponse)
-                .verifyComplete();
-
-        Mockito.verify(ibanValidationService).validateIban(iban);
+    @Operation(summary = "Validate Iban")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Validation completed",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = IbanValidationResponse.class)))),
+            @ApiResponse(responseCode = "401", description = "Non autorisé", content = @Content)
+    })
+    @GetMapping("/validate/{iban}")
+    public Mono<IbanValidationResponse> validateIban(@PathVariable String iban) {
+        return bankInfoValidationService.validateIban(iban);
     }
 
-    @Test
-    void findBankByIban_ShouldReturnBankInfo() {
-        // Given
-        String iban = "DE89370400440532013000";
-        FindBankResponse bankResponse = new FindBankResponse("BIC123", "Test Bank", "DE", "Test Address");
-        ApiResponse<FindBankResponse> expectedResponse = new ApiResponse<>(bankResponse, "Bank found for IBAN");
-
-        Mockito.when(ibanValidationService.findBankByIban(iban)).thenReturn(Mono.just(expectedResponse));
-
-        // When
-        StepVerifier.create(ibanValidationController.findBankByIban(iban))
-                .expectNext(expectedResponse)
-                .verifyComplete();
-
-        Mockito.verify(ibanValidationService).findBankByIban(iban);
+    @Operation(summary = "find bank by bic")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Validation completed",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = IbanValidationResponse.class)))),
+            @ApiResponse(responseCode = "401", description = "Non autorisé", content = @Content)
+    })
+    @GetMapping("/bic/{bic}")
+    public Mono<FindBankResponse> getBankByBic(@PathVariable String bic) {
+        return bankInfoValidationService.findBankByBic(bic);
     }
 
-    @Test
-    void findBankByBic_ShouldReturnBankInfo() {
-        // Given
-        String bic = "BIC123";
-        FindBankResponse bankResponse = new FindBankResponse(bic, "Test Bank", "DE", "Test Address");
-        ApiResponse<FindBankResponse> expectedResponse = new ApiResponse<>(bankResponse, "Bank found for BIC");
-
-        Mockito.when(ibanValidationService.findBankByBic(bic)).thenReturn(Mono.just(expectedResponse));
-
-        // When
-        StepVerifier.create(ibanValidationController.findBankByBic(bic))
-                .expectNext(expectedResponse)
-                .verifyComplete();
-
-        Mockito.verify(ibanValidationService).findBankByBic(bic);
-    }
 }
