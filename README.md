@@ -1,128 +1,110 @@
-package eu.olky.bankInfo.service;
-
-import eu.olky.bankInfo.dto.FindBankResponse;
-import eu.olky.bankInfo.dto.IbanValidationResponse;
-import org.iban4j.BicFormatException;
-import org.iban4j.BicUtil;
-import org.iban4j.IbanFormatException;
-import org.iban4j.IbanUtil;
-import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.UnsupportedMediaTypeException;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import reactor.core.publisher.Mono;
-
-@Service
-public class BankInfoValidationService {
-
-    private final WebClient webClient;
-
-    public BankInfoValidationService(WebClient webClient) {
-        this.webClient = webClient;
-    }
-
-    public Mono<IbanValidationResponse> validateIban(String iban) {
-        if (isValidIban(iban)) {
-            return webClient.get()
-                    .uri("/validate_iban/{iban}", iban.trim())
-                    .retrieve()
-                    .bodyToMono(IbanValidationResponse.class)
-                    .onErrorResume(WebClientResponseException.class, ex -> {
-                        return Mono.error(new RuntimeException("Erreur lors de la validation de l'IBAN : " + ex.getMessage()));
-                    });
-        }
-        return Mono.error(new IllegalArgumentException("Invalid IBAN"));
-
-
-    }
-
-    public Mono<FindBankResponse> findBankByBic(String bic) {
-        // Validate BIC input
-        if (isValidBic(bic)) {
-            return webClient.get()
-                    .uri("https://rest.sepatools.eu/find_bank///" + bic + "/5")
-                    .retrieve()
-                    .bodyToMono(FindBankResponse.class)
-                    .onErrorResume(UnsupportedMediaTypeException.class, ex -> {
-                        // Handle UnsupportedMediaTypeException
-                        System.err.println("Unsupported media type: " + ex.getMessage());
-                        return Mono.error(new RuntimeException("Unsupported media type: " + ex.getMessage()));
-                    });
-        }
-        return Mono.error(new IllegalArgumentException("Invalid BIC"));
-
-    }
-
-    public static boolean isValidBic(String bic) {
-        try {
-            BicUtil.validate(bic);
-            return true;
-        } catch (BicFormatException e) {
-            return false;
-        }
-    }
-
-    public static boolean isValidIban(String bic) {
-        try {
-            IbanUtil.validate(bic);
-            return true;
-        } catch (IbanFormatException e) {
-            return false;
-        }
-    }
-
-}
 package eu.olky.bankInfo.web;
 
 import eu.olky.bankInfo.dto.FindBankResponse;
 import eu.olky.bankInfo.dto.IbanValidationResponse;
 import eu.olky.bankInfo.service.BankInfoValidationService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
-@RestController
-@RequestMapping("/api/")
-@Tag(name = "Bank Info", description = "Bank Info Validation")
-public class BankInfoValidationController {
+@ExtendWith(MockitoExtension.class)
+class BankInfoValidationControllerTest {
 
-    private final BankInfoValidationService bankInfoValidationService;
+    @Mock
+    private BankInfoValidationService bankInfoValidationService;
 
-    public BankInfoValidationController(BankInfoValidationService bankInfoValidationService) {
-        this.bankInfoValidationService = bankInfoValidationService;
+    @InjectMocks
+    private BankInfoValidationController bankInfoValidationController;
+
+    @BeforeEach
+    void setUp() {
+        Mockito.reset(bankInfoValidationService);
     }
 
-    @Operation(summary = "Validate Iban")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Validation completed",
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = IbanValidationResponse.class)))),
-            @ApiResponse(responseCode = "401", description = "Non autorisé", content = @Content)
-    })
-    @GetMapping("/validate/{iban}")
-    public Mono<IbanValidationResponse> validateIban(@PathVariable String iban) {
-        return bankInfoValidationService.validateIban(iban);
+    @Test
+    void validateIban_ShouldReturnValidResponse() {
+        // Given
+        String iban = "DE89370400440532013000";
+        IbanValidationResponse ibanResponse = new IbanValidationResponse(iban, true);
+
+        when(bankInfoValidationService.validateIban(iban)).thenReturn(Mono.just(ibanResponse));
+
+        // When & Then
+        StepVerifier.create(bankInfoValidationController.validateIban(iban))
+                .expectNext(ibanResponse)
+                .verifyComplete();
+
+        verify(bankInfoValidationService, times(1)).validateIban(iban);
     }
 
-    @Operation(summary = "find bank by bic")
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Validation completed",
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = IbanValidationResponse.class)))),
-            @ApiResponse(responseCode = "401", description = "Non autorisé", content = @Content)
-    })
-    @GetMapping("/bic/{bic}")
-    public Mono<FindBankResponse> getBankByBic(@PathVariable String bic) {
-        return bankInfoValidationService.findBankByBic(bic);
+    @Test
+    void validateIban_ShouldReturnErrorForInvalidIban() {
+        // Given
+        String invalidIban = "INVALID";
+        when(bankInfoValidationService.validateIban(invalidIban)).thenReturn(Mono.error(new IllegalArgumentException("Invalid IBAN")));
+
+        // When & Then
+        StepVerifier.create(bankInfoValidationController.validateIban(invalidIban))
+                .expectErrorMatches(throwable -> throwable instanceof IllegalArgumentException &&
+                        throwable.getMessage().equals("Invalid IBAN"))
+                .verify();
+
+        verify(bankInfoValidationService, times(1)).validateIban(invalidIban);
     }
 
+    @Test
+    void getBankByBic_ShouldReturnBankInfo() {
+        // Given
+        String bic = "DEUTDEFF";
+        FindBankResponse bankResponse = new FindBankResponse(bic, "Deutsche Bank", "Germany", "Taunusanlage 12");
+
+        when(bankInfoValidationService.findBankByBic(bic)).thenReturn(Mono.just(bankResponse));
+
+        // When & Then
+        StepVerifier.create(bankInfoValidationController.getBankByBic(bic))
+                .expectNext(bankResponse)
+                .verifyComplete();
+
+        verify(bankInfoValidationService, times(1)).findBankByBic(bic);
+    }
+
+    @Test
+    void getBankByBic_ShouldReturnErrorForInvalidBic() {
+        // Given
+        String invalidBic = "INVALID";
+        when(bankInfoValidationService.findBankByBic(invalidBic)).thenReturn(Mono.error(new IllegalArgumentException("Invalid BIC")));
+
+        // When & Then
+        StepVerifier.create(bankInfoValidationController.getBankByBic(invalidBic))
+                .expectErrorMatches(throwable -> throwable instanceof IllegalArgumentException &&
+                        throwable.getMessage().equals("Invalid BIC"))
+                .verify();
+
+        verify(bankInfoValidationService, times(1)).findBankByBic(invalidBic);
+    }
+
+    @Test
+    void getBankByBic_ShouldHandleWebClientException() {
+        // Given
+        String bic = "DEUTDEFF";
+        when(bankInfoValidationService.findBankByBic(bic))
+                .thenReturn(Mono.error(new RuntimeException("Error fetching bank info")));
+
+        // When & Then
+        StepVerifier.create(bankInfoValidationController.getBankByBic(bic))
+                .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
+                        throwable.getMessage().equals("Error fetching bank info"))
+                .verify();
+
+        verify(bankInfoValidationService, times(1)).findBankByBic(bic);
+    }
 }
-
