@@ -1,9 +1,43 @@
-You’re seeing this error because Mockito’s inline mock maker isn’t properly set up, and some dependencies might be missing. Let’s fix it step by step.
+@ExtendWith(MockitoExtension.class)
+class BankInfoValidationServiceTest {
 
-Fix 1: Add Mockito Java Agent in pom.xml (Recommended)
+    @Mock
+    private WebClient webClient;
 
-Starting from Java 21, dynamic agent loading (which Mockito uses) is being restricted. To fix this, explicitly add Mockito’s Java agent:
+    @Mock
+    private WebClient.RequestHeadersUriSpec<?> requestHeadersUriSpec;
 
+    @Mock
+    private WebClient.RequestHeadersSpec<?> requestHeadersSpec;
+
+    @Mock
+    private WebClient.ResponseSpec responseSpec;
+
+    private BankInfoValidationService bankInfoValidationService;
+
+    @BeforeEach
+    void setUp() {
+        bankInfoValidationService = new BankInfoValidationService(webClient);
+    }
+
+    @Test
+    void validateIban_ShouldReturnResponse() {
+        String iban = "DE89370400440532013000";
+        IbanValidationResponse mockResponse = new IbanValidationResponse(iban, true);
+
+        // Mock WebClient behavior
+        when(webClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(anyString(), any())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.header(eq(HttpHeaders.AUTHORIZATION), anyString())).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.bodyToMono(IbanValidationResponse.class)).thenReturn(Mono.just(mockResponse));
+
+        // Execute test
+        StepVerifier.create(bankInfoValidationService.validateIban(iban))
+                .expectNextMatches(response -> response.isValid())
+                .verifyComplete();
+    }
+}
 <dependency>
     <groupId>org.mockito</groupId>
     <artifactId>mockito-core</artifactId>
