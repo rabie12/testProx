@@ -2,7 +2,7 @@
 class BankInfoValidationServiceTest {
 
     @Mock
-    private WebClient webClient; // Mocking WebClient only
+    private WebClient webClient;
 
     @Mock
     private WebClient.RequestHeadersUriSpec<?> requestHeadersUriSpecMock;
@@ -13,46 +13,50 @@ class BankInfoValidationServiceTest {
     @Mock
     private WebClient.ResponseSpec responseSpecMock;
 
+    @InjectMocks
     private BankInfoValidationService bankInfoValidationService;
-
-    @BeforeEach
-    void setUp() {
-        bankInfoValidationService = new BankInfoValidationService(webClient);
-    }
 
     @Test
     void validateIban_ShouldReturnValidResponse() {
         // Given
         String iban = "DE89370400440532013000";
-        IbanValidationResponse mockResponse = new IbanValidationResponse(iban, true);
+        IbanValidationResponse expectedResponse = new IbanValidationResponse(true, "Valid IBAN");
 
-        // Define mock behavior
-        when(webClient.get()).thenReturn(requestHeadersUriSpecMock);
-        when(requestHeadersUriSpecMock.uri(anyString(), any())).thenReturn(requestHeadersSpecMock);
-        when(requestHeadersSpecMock.retrieve()).thenReturn(responseSpecMock);
-        when(responseSpecMock.bodyToMono(IbanValidationResponse.class)).thenReturn(Mono.just(mockResponse));
+        Mockito.when(webClient.get()).thenReturn(requestHeadersUriSpecMock);
+        Mockito.when(requestHeadersUriSpecMock.uri("/validate_iban/{iban}", iban.trim()))
+               .thenReturn(requestHeadersSpecMock);
+        Mockito.when(requestHeadersSpecMock.retrieve()).thenReturn(responseSpecMock);
+        Mockito.when(responseSpecMock.bodyToMono(IbanValidationResponse.class))
+               .thenReturn(Mono.just(expectedResponse));
 
-        // When & Then
-        StepVerifier.create(bankInfoValidationService.validateIban(iban))
-                .expectNextMatches(response -> response.isValid())
+        // When
+        Mono<IbanValidationResponse> responseMono = bankInfoValidationService.validateIban(iban);
+
+        // Then
+        StepVerifier.create(responseMono)
+                .expectNext(expectedResponse)
                 .verifyComplete();
     }
 
     @Test
-    void findBankByBic_ShouldReturnValidResponse() {
+    void findBankByBic_ShouldReturnFindBankResponse() {
         // Given
         String bic = "DEUTDEFF";
-        FindBankResponse mockResponse = new FindBankResponse(bic, "Deutsche Bank", "Germany");
+        FindBankResponse expectedResponse = new FindBankResponse("Deutsche Bank", bic, "Germany");
 
-        // Define mock behavior
-        when(webClient.get()).thenReturn(requestHeadersUriSpecMock);
-        when(requestHeadersUriSpecMock.uri(anyString())).thenReturn(requestHeadersSpecMock);
-        when(requestHeadersSpecMock.retrieve()).thenReturn(responseSpecMock);
-        when(responseSpecMock.bodyToMono(FindBankResponse.class)).thenReturn(Mono.just(mockResponse));
+        Mockito.when(webClient.get()).thenReturn(requestHeadersUriSpecMock);
+        Mockito.when(requestHeadersUriSpecMock.uri("https://rest.sepatools.eu/find_bank///" + bic + "/5"))
+               .thenReturn(requestHeadersSpecMock);
+        Mockito.when(requestHeadersSpecMock.retrieve()).thenReturn(responseSpecMock);
+        Mockito.when(responseSpecMock.bodyToMono(FindBankResponse.class))
+               .thenReturn(Mono.just(expectedResponse));
 
-        // When & Then
-        StepVerifier.create(bankInfoValidationService.findBankByBic(bic))
-                .expectNextMatches(response -> response.getBankName().equals("Deutsche Bank"))
+        // When
+        Mono<FindBankResponse> responseMono = bankInfoValidationService.findBankByBic(bic);
+
+        // Then
+        StepVerifier.create(responseMono)
+                .expectNext(expectedResponse)
                 .verifyComplete();
     }
 }
