@@ -1,18 +1,80 @@
-Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build what is described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org/mockito/Mockito.html#0.3
-WARNING: A Java agent has been loaded dynamically (C:\Users\RHABACHI\.m2\repository\net\bytebuddy\byte-buddy-agent\1.15.11\byte-buddy-agent-1.15.11.jar)
-WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
-WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
-WARNING: Dynamic loading of agents will be disallowed by default in a future release
-OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+You’re seeing this error because Mockito’s inline mock maker isn’t properly set up, and some dependencies might be missing. Let’s fix it step by step.
 
-org.mockito.exceptions.misusing.NotAMockException: Argument should be a mock, but is null!
+Fix 1: Add Mockito Java Agent in pom.xml (Recommended)
 
-	at eu.olky.bankInfo.web.BankInfoValidationControllerTest.setUp(BankInfoValidationControllerTest.java:26)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-package eu.olky.bankInfo.service;
+Starting from Java 21, dynamic agent loading (which Mockito uses) is being restricted. To fix this, explicitly add Mockito’s Java agent:
 
+<dependency>
+    <groupId>org.mockito</groupId>
+    <artifactId>mockito-core</artifactId>
+    <version>5.7.0</version>
+    <scope>test</scope>
+</dependency>
+
+<dependency>
+    <groupId>org.mockito</groupId>
+    <artifactId>mockito-inline</artifactId>
+    <version>5.2.0</version>
+    <scope>test</scope>
+</dependency>
+
+Then, in maven-surefire-plugin, add this:
+
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-surefire-plugin</artifactId>
+    <version>3.0.0-M7</version>
+    <configuration>
+        <argLine>-javaagent:"${settings.localRepository}/org/mockito/mockito-inline/5.2.0/mockito-inline-5.2.0.jar"</argLine>
+    </configuration>
+</plugin>
+
+This ensures Mockito runs correctly in newer Java versions.
+
+Fix 2: Ensure WebClient Mocking Works Properly
+
+You’re getting NotAMockException because Mockito is expecting a mock but got null. Ensure correct annotation usage:
+
+@ExtendWith(MockitoExtension.class)
+class BankInfoValidationControllerTest {
+
+    @Mock
+    private BankInfoValidationService bankInfoValidationService;
+
+    @InjectMocks
+    private BankInfoValidationController bankInfoValidationController; // Ensure it's created with mocks injected
+
+    @BeforeEach
+    void setUp() {
+        when(bankInfoValidationService.validateIban(anyString()))
+                .thenReturn(Mono.just(new IbanValidationResponse("DE89370400440532013000", true)));
+
+        when(bankInfoValidationService.findBankByBic(anyString()))
+                .thenReturn(Mono.just(new FindBankResponse("DEUTDEFF", "Deutsche Bank", "Germany", "Taunusanlage 12")));
+    }
+
+    @Test
+    void validateIban_ShouldReturnResponse() {
+        StepVerifier.create(bankInfoValidationController.validateIban("DE89370400440532013000"))
+                .expectNextMatches(response -> response.isValid())
+                .verifyComplete();
+    }
+
+    @Test
+    void getBankByBic_ShouldReturnResponse() {
+        StepVerifier.create(bankInfoValidationController.getBankByBic("DEUTDEFF"))
+                .expectNextMatches(response -> response.getBankName().equals("Deutsche Bank"))
+                .verifyComplete();
+    }
+}
+
+Why This Works
+
+✔ Fixed the missing inline-mock-maker issue using mockito-inline
+✔ Ensured proper dependency injection by initializing @InjectMocks
+✔ Used .expectNextMatches() to verify fields dynamically
+
+Now, StepVerifier should work correctly without the NotAMockException error. Let me know if you still have issues!
 import eu.olky.bankInfo.dto.FindBankResponse;
 import eu.olky.bankInfo.dto.IbanValidationResponse;
 import org.iban4j.BicFormatException;
