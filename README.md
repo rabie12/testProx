@@ -1,114 +1,16 @@
-package eu.olky.bankInfo.web;
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build what is described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (C:\Users\RHABACHI\.m2\repository\net\bytebuddy\byte-buddy-agent\1.15.11\byte-buddy-agent-1.15.11.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
 
-import eu.olky.bankInfo.dto.FindBankResponse;
-import eu.olky.bankInfo.dto.IbanValidationResponse;
-import eu.olky.bankInfo.service.BankInfoValidationService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
-import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
+org.mockito.exceptions.misusing.NotAMockException: Argument should be a mock, but is null!
 
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-class BankInfoValidationControllerTest {
-
-    @Mock
-    private BankInfoValidationService bankInfoValidationService;
-
-    @InjectMocks
-    private BankInfoValidationController bankInfoValidationController;
-
-    @BeforeEach
-    void setUp() {
-        Mockito.reset(bankInfoValidationService);
-    }
-
-    @Test
-    void validateIban_ShouldReturnValidResponse() {
-        // Given
-        String iban = "DE89370400440532013000";
-        IbanValidationResponse ibanResponse = new IbanValidationResponse(iban, true);
-
-        when(bankInfoValidationService.validateIban(iban)).thenReturn(Mono.just(ibanResponse));
-
-        // When & Then
-        StepVerifier.create(bankInfoValidationController.validateIban(iban))
-                .expectNext(ibanResponse)
-                .verifyComplete();
-
-        verify(bankInfoValidationService, times(1)).validateIban(iban);
-    }
-
-    @Test
-    void validateIban_ShouldReturnErrorForInvalidIban() {
-        // Given
-        String invalidIban = "INVALID";
-        when(bankInfoValidationService.validateIban(invalidIban)).thenReturn(Mono.error(new IllegalArgumentException("Invalid IBAN")));
-
-        // When & Then
-        StepVerifier.create(bankInfoValidationController.validateIban(invalidIban))
-                .expectErrorMatches(throwable -> throwable instanceof IllegalArgumentException &&
-                        throwable.getMessage().equals("Invalid IBAN"))
-                .verify();
-
-        verify(bankInfoValidationService, times(1)).validateIban(invalidIban);
-    }
-
-    @Test
-    void getBankByBic_ShouldReturnBankInfo() {
-        // Given
-        String bic = "DEUTDEFF";
-        FindBankResponse bankResponse = new FindBankResponse(bic, "Deutsche Bank", "Germany", "Taunusanlage 12");
-
-        when(bankInfoValidationService.findBankByBic(bic)).thenReturn(Mono.just(bankResponse));
-
-        // When & Then
-        StepVerifier.create(bankInfoValidationController.getBankByBic(bic))
-                .expectNext(bankResponse)
-                .verifyComplete();
-
-        verify(bankInfoValidationService, times(1)).findBankByBic(bic);
-    }
-
-    @Test
-    void getBankByBic_ShouldReturnErrorForInvalidBic() {
-        // Given
-        String invalidBic = "INVALID";
-        when(bankInfoValidationService.findBankByBic(invalidBic)).thenReturn(Mono.error(new IllegalArgumentException("Invalid BIC")));
-
-        // When & Then
-        StepVerifier.create(bankInfoValidationController.getBankByBic(invalidBic))
-                .expectErrorMatches(throwable -> throwable instanceof IllegalArgumentException &&
-                        throwable.getMessage().equals("Invalid BIC"))
-                .verify();
-
-        verify(bankInfoValidationService, times(1)).findBankByBic(invalidBic);
-    }
-
-    @Test
-    void getBankByBic_ShouldHandleWebClientException() {
-        // Given
-        String bic = "DEUTDEFF";
-        when(bankInfoValidationService.findBankByBic(bic))
-                .thenReturn(Mono.error(new RuntimeException("Error fetching bank info")));
-
-        // When & Then
-        StepVerifier.create(bankInfoValidationController.getBankByBic(bic))
-                .expectErrorMatches(throwable -> throwable instanceof RuntimeException &&
-                        throwable.getMessage().equals("Error fetching bank info"))
-                .verify();
-
-        verify(bankInfoValidationService, times(1)).findBankByBic(bic);
-    }
-}
-
+	at eu.olky.bankInfo.web.BankInfoValidationControllerTest.setUp(BankInfoValidationControllerTest.java:26)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
 package eu.olky.bankInfo.service;
 
 import eu.olky.bankInfo.dto.FindBankResponse;
