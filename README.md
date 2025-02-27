@@ -1,73 +1,3 @@
-Sure! I’ll provide the unit test implementation for IbanValidationController using Mockito and JUnit 5. The service will return either an IbanValidationResponse or a FindBankResponse, and we’ll mock the dependencies without using @Autowired. Instead, we’ll use constructor injection for better testability.
-
-1. IbanValidationResponse & FindBankResponse DTOs
-
-If these DTOs don’t already exist, we define them:
-
-public record IbanValidationResponse(String iban, boolean isValid, String message) {}
-
-public record FindBankResponse(String bic, String bankName, String country, String address) {}
-
-2. IbanValidationService
-
-We’ll define the service with methods returning either an IbanValidationResponse or a FindBankResponse.
-
-@Service
-@RequiredArgsConstructor
-public class IbanValidationService {
-    private final BankInfoClient bankInfoClient;
-
-    public IbanValidationResponse validateIban(String iban) {
-        // Assume some validation logic
-        boolean isValid = iban.startsWith("DE") && iban.length() == 22;
-        String message = isValid ? "Valid IBAN" : "Invalid IBAN";
-
-        return new IbanValidationResponse(iban, isValid, message);
-    }
-
-    public FindBankResponse findBankByIban(String iban) {
-        return bankInfoClient.getBankInfoByIban(iban);
-    }
-}
-
-	•	validateIban: Validates IBAN format.
-	•	findBankByIban: Calls BankInfoClient (FeignClient) to fetch bank details.
-
-3. FeignClient to Call Bank Info Service
-
-Since IbanValidationService depends on the Bank Info Service, we use FeignClient:
-
-@FeignClient(name = "bank-info-service", path = "/api/bank")
-public interface BankInfoClient {
-    @GetMapping("/iban/{iban}")
-    FindBankResponse getBankInfoByIban(@PathVariable String iban);
-}
-
-4. IbanValidationController
-
-The controller injects IbanValidationService via constructor injection:
-
-@RestController
-@RequestMapping("/api/iban")
-@RequiredArgsConstructor
-public class IbanValidationController {
-    private final IbanValidationService ibanValidationService;
-
-    @GetMapping("/validate/{iban}")
-    public IbanValidationResponse validateIban(@PathVariable String iban) {
-        return ibanValidationService.validateIban(iban);
-    }
-
-    @GetMapping("/find-bank/{iban}")
-    public FindBankResponse findBankByIban(@PathVariable String iban) {
-        return ibanValidationService.findBankByIban(iban);
-    }
-}
-
-5. Unit Test for IbanValidationController
-
-We’ll use Mockito to mock IbanValidationService and verify interactions.
-
 @ExtendWith(MockitoExtension.class)
 class IbanValidationControllerTest {
 
@@ -85,15 +15,16 @@ class IbanValidationControllerTest {
     void validateIban_ShouldReturnValidResponse() {
         // Given
         String iban = "DE89370400440532013000";
-        IbanValidationResponse expectedResponse = new IbanValidationResponse(iban, true, "Valid IBAN");
+        IbanValidationResponse ibanResponse = new IbanValidationResponse(iban, true);
+        ApiResponse<IbanValidationResponse> expectedResponse = new ApiResponse<>(ibanResponse, "Valid IBAN");
 
-        Mockito.when(ibanValidationService.validateIban(iban)).thenReturn(expectedResponse);
+        Mockito.when(ibanValidationService.validateIban(iban)).thenReturn(Mono.just(expectedResponse));
 
         // When
-        IbanValidationResponse response = ibanValidationController.validateIban(iban);
+        StepVerifier.create(ibanValidationController.validateIban(iban))
+                .expectNext(expectedResponse)
+                .verifyComplete();
 
-        // Then
-        assertEquals(expectedResponse, response);
         Mockito.verify(ibanValidationService).validateIban(iban);
     }
 
@@ -101,24 +32,33 @@ class IbanValidationControllerTest {
     void findBankByIban_ShouldReturnBankInfo() {
         // Given
         String iban = "DE89370400440532013000";
-        FindBankResponse expectedResponse = new FindBankResponse("BIC123", "Test Bank", "DE", "Test Address");
+        FindBankResponse bankResponse = new FindBankResponse("BIC123", "Test Bank", "DE", "Test Address");
+        ApiResponse<FindBankResponse> expectedResponse = new ApiResponse<>(bankResponse, "Bank found for IBAN");
 
-        Mockito.when(ibanValidationService.findBankByIban(iban)).thenReturn(expectedResponse);
+        Mockito.when(ibanValidationService.findBankByIban(iban)).thenReturn(Mono.just(expectedResponse));
 
         // When
-        FindBankResponse response = ibanValidationController.findBankByIban(iban);
+        StepVerifier.create(ibanValidationController.findBankByIban(iban))
+                .expectNext(expectedResponse)
+                .verifyComplete();
 
-        // Then
-        assertEquals(expectedResponse, response);
         Mockito.verify(ibanValidationService).findBankByIban(iban);
     }
+
+    @Test
+    void findBankByBic_ShouldReturnBankInfo() {
+        // Given
+        String bic = "BIC123";
+        FindBankResponse bankResponse = new FindBankResponse(bic, "Test Bank", "DE", "Test Address");
+        ApiResponse<FindBankResponse> expectedResponse = new ApiResponse<>(bankResponse, "Bank found for BIC");
+
+        Mockito.when(ibanValidationService.findBankByBic(bic)).thenReturn(Mono.just(expectedResponse));
+
+        // When
+        StepVerifier.create(ibanValidationController.findBankByBic(bic))
+                .expectNext(expectedResponse)
+                .verifyComplete();
+
+        Mockito.verify(ibanValidationService).findBankByBic(bic);
+    }
 }
-
-6. Explanation
-
-✅ Mocks IbanValidationService instead of using @Autowired.
-✅ Uses constructor injection for IbanValidationController.
-✅ Verifies interactions using Mockito.verify().
-✅ Tests both API endpoints (/validate/{iban} and /find-bank/{iban}).
-
-Let me know if you need further refinements!
