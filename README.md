@@ -1,26 +1,8 @@
-@Mapper(componentModel = "spring")
-public interface IbanMapper {
-    @Mapping(source = "iban", target = "iban")
-    @Mapping(source = "bank", target = "bank")
-    @Mapping(source = "bankAddress", target = "bankAddress")
-    IbanEntity toEntity(IbanValidationResponse response);
-}
+Description:
 
-@Entity
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class IbanEntity {
-    @Id
-    private String iban;
-    private String bank;
-    private String bankAddress;
-}
+Parameter 1 of constructor in eu.olky.bankInfo.service.BankInfoValidationService required a bean of type 'eu.olky.bankInfo.mapper.IbanSearchHistoryMapper' that could not be found.
 
-@Mapper(componentModel = "spring")
-public interface IbanMapper {
-    @Mapping(source = "iban", target = "iban")
-    @Mapping(source = "bank", target = "bank")
-    @Mapping(source = "bankAddress", target = "bankAddress")
-    IbanEntity toEntity(IbanValidationResponse response);
-}
+
+Action:
+
+Consider defining a bean of type 'eu.olky.bankInfo.mapper.IbanSearchHistoryMapper' in your configuration.
